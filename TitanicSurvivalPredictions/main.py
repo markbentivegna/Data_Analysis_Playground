@@ -107,6 +107,7 @@ for feature in training_features:
 	pclass.append(feature[0])
 	sexes.append(feature[1])
 	
+#The two features with the strongest correlation coefficients for survival are class and sex
 class_coef = np.corrcoef(pclass, labels)
 print("correlation coefficient by class:", class_coef)
 
