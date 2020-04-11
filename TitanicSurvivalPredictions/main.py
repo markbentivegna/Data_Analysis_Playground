@@ -1,130 +1,51 @@
-import csv 
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 from sklearn.naive_bayes import GaussianNB
+from sklearn import svm
+from sklearn.neural_network import MLPClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+from preprocessing import preprocessing_array, preprocessing_df
+from selectkbest import select_k_best
+from quartile_plot import generate_quartile_plot
+from feature_importances import feature_importance_scores
+from correlation_features import generate_correlation_matrix
+from correlation_sort import sorted_correlation
+from covariance_sort import sorted_covariance
+from submission_csv import generate_csv_file
 
 train_filename = "data/train.csv"
 test_filename = "data/test.csv"
+train_df = pd.read_csv(train_filename, encoding = "ISO-8859-1")
+test_df = pd.read_csv(test_filename, encoding = "ISO-8859-1")
+train_df = preprocessing_df(train_df)
+test_df = preprocessing_df(test_df)
 
-features_fields = ["Pclass", "Sex", "Parch", "Fare", "Cabin", "Embarked"]
+transpose_x = np.transpose(train_df.drop('Survived', axis=1))
+sorted_covariance = sorted_covariance(transpose_x, train_df.Survived)
+sorted_correlation = sorted_correlation(transpose_x, train_df.Survived)
 
-training_fields = [] 
-training_rows = []
-label_field = "Survived"
-label_index = 0
-training_features_index = []
-training_features = []
-labels = []
+k_best_features = select_k_best(train_df, "Survived")
+# feature_importance_scores = feature_importance_scores(train_df)
+# generate_correlation_matrix(train_df)
+# quartile_data = [survived_df.Age, died_df.Age, survived_df.Fare, died_df.Fare, survived_df.Cabin, died_df.Cabin]
+# generate_quartile_plot(quartile_data)
 
-test_fields = []
-test_rows = []
-test_features_index = []
-test_features = []
-passenger_id_list = []
+selected_features = ["Pclass", "Sex", "Fare", "Cabin", "Embarked", "Age"]
+y_train = train_df.Survived
+X_train, X_test = preprocessing_array(train_df, test_df, selected_features)
+# X_train, X_test, y_train, y_test = train_test_split(np.nan_to_num(train_df[selected_features]), train_df.Survived, test_size=0.3)
 
-string_to_int_mapping = {}
+# clf = DecisionTreeClassifier()
+# clf = GaussianNB()
+# clf = svm.SVC()
+#clf = AdaBoostClassifier(n_estimators=1000)
+clf = MLPClassifier(solver='lbfgs', alpha=1e-6, hidden_layer_sizes=(5,2), random_state=1)
 
-with open(train_filename, 'r') as csvfile: 
-	csvreader = csv.reader(csvfile) 
-	training_fields = csvreader.__next__()
+clf.fit(X_train, y_train)
+print("TRAINING SCORE:", clf.score(X_train, y_train))
+pred = clf.predict(X_test)
 
-	for row in csvreader: 
-		training_rows.append(row) 
-	print("Total no. of rows: %d"%(csvreader.line_num)) 
-	print('Field names are:' + ', '.join(field for field in training_fields)) 
-
-with open(test_filename, 'r') as csvfile: 
-	csvreader = csv.reader(csvfile) 
-	test_fields = csvreader.__next__()
-
-	for row in csvreader: 
-		test_rows.append(row) 
-	print("Total no. of rows: %d"%(csvreader.line_num)) 
-	print('Field names are:' + ', '.join(field for field in test_fields))
-
-for i in range(len(training_fields)):
-	if training_fields[i] == label_field:
-		label_index = i
-	if training_fields[i] in features_fields:
-		training_features_index.append(i)
-
-for i in range(len(test_fields)):
-	if test_fields[i] in features_fields:
-		test_features_index.append(i)
-
-print('survived index:', label_index)
-
-for row in training_rows:
-	col_count = 0
-	new_features = []
-	for field in row:
-		if col_count == label_index:
-			labels.append(int(field))
-		if col_count in training_features_index:
-			try:
-				new_features.append(float(field))
-			except ValueError:
-				try:
-					if field[0] not in string_to_int_mapping:
-						string_to_int_mapping[field[0]] = len(string_to_int_mapping) + 1
-					new_features.append(string_to_int_mapping[field[0]])
-				except IndexError:
-					new_features.append(-1)
-		col_count += 1
-	training_features.append(new_features)
-
-for row in test_rows:
-	col_count = 0
-	new_features = []
-	for field in row:
-		if col_count == 0:
-			passenger_id_list.append(field)
-		if col_count in test_features_index:
-			try:
-				new_features.append(float(field))
-			except ValueError:
-				try:
-					if field[0] not in string_to_int_mapping:
-						string_to_int_mapping[field[0]] = len(string_to_int_mapping) + 1
-					new_features.append(string_to_int_mapping[field[0]])
-				except IndexError:
-					new_features.append(-1)
-		col_count += 1
-	test_features.append(new_features)
-
-
-x = np.array(training_features)
-x = x.astype(np.float64)
-clf = GaussianNB()
-clf.fit(x, labels)
-pred = clf.predict(test_features)
-
-pclass = []
-sexes = []
-
-for feature in training_features:
-	pclass.append(feature[0])
-	sexes.append(feature[1])
-	
-#The two features with the strongest correlation coefficients for survival are class and sex
-class_coef = np.corrcoef(pclass, labels)
-print("correlation coefficient by class:", class_coef)
-
-sex_coef = np.corrcoef(sexes, labels)
-print("correlation coefficient by sex:", sex_coef)
-
-colors = []
-for label in labels:
-	if label == 1:
-		colors.append('red')
-	else:
-		colors.append('blue')
-
-with open ('submission.csv', 'w', newline='') as csvfile:
-	fieldnames = ['PassengerId', 'Survived']
-	writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-	writer.writeheader()
-	for i in range(len(pred)):
-		writer.writerow({'PassengerId': passenger_id_list[i], 'Survived': pred[i]})
+generate_csv_file(test_df, pred, 'submission.csv')
